@@ -78,6 +78,7 @@ class Evaluator( Trainer_BERT) :
     par_rank, par_size = setup_ddp( with_ddp)
 
     cf = Config().load_json( model_id)
+    cf.partial_load = -1 #24*20
     cf.with_wandb = True
     cf.with_ddp = with_ddp
     cf.par_rank = par_rank

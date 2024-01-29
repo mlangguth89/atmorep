@@ -42,14 +42,17 @@ def train_continue( model_id, model_epoch, Trainer, model_epoch_continue = -1) :
   cf.par_rank = par_rank
   cf.par_size = par_size
   cf.attention = False
-  cf.optimizer_zero = False   
+  cf.optimizer_zero = False
+  cf.partial_load = 24*20
+  
   if hasattr( cf, 'loader_num_workers') :
     cf.num_loader_workers = cf.loader_num_workers
-
-#  for i in range(len(cf.fields)) :
-#    cf.fields[i][3][0] = 4 #load 12 hours
-#    print ( cf.fields[i][0], cf.fields[i][3])
-#  cf.forecast_num_tokens = 4 #predict 12 hours
+  cf.num_loader_workers = 2
+  
+  for i in range(len(cf.fields)) :
+    cf.fields[i][3][0] = 4 #load 12 hours
+    print ( cf.fields[i][0], cf.fields[i][3])
+  cf.forecast_num_tokens = 2 #predict 12 hours
   
   setup_wandb( cf.with_wandb, cf, par_rank, 'train-multi', mode='offline')  
 
@@ -210,11 +213,12 @@ def train_multi() :
   cf.test_initial = True
   cf.attention = False
 
-  cf.rng_seed = None 
+  cf.rng_seed = None
+  cf.partial_load = 24*20
 
   # usually use %>wandb offline to switch to disable syncing with server
   cf.with_wandb = True
-  setup_wandb( cf.with_wandb, cf, par_rank, 'train-multi', mode='offline')  
+  setup_wandb( cf.with_wandb, cf, par_rank, 'iluise-train-multi', mode='offline')  
 
   if cf.with_wandb and 0 == cf.par_rank :
     cf.write_json( wandb)
@@ -226,12 +230,12 @@ def train_multi() :
 ####################################################################################################
 if __name__ == '__main__':
 
-  train_multi()
+#  train_multi()
 
   # # Continue training run
   
-#  model_id, model_epoch = '1jh2qvrx', -2
-#  model_epoch_continue = 0
-#  
-#  Trainer = Trainer_BERT
-#  train_continue( model_id, model_epoch, Trainer, model_epoch_continue)
+  model_id, model_epoch = '1jh2qvrx', -2
+  model_epoch_continue = 0
+  
+  Trainer = Trainer_BERT
+  train_continue( model_id, model_epoch, Trainer, model_epoch_continue)

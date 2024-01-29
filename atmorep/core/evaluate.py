@@ -19,7 +19,7 @@ from atmorep.core.evaluator import Evaluator
 if __name__ == '__main__':
 
   # models for individual fields
-  model_id = '4nvwbetz'     # vorticity
+  #model_id = '4nvwbetz'     # vorticity
   # model_id = 'oxpycr7w'     # divergence
   # model_id = '1565pb1f'     # specific_humidity
   # model_id = '3kdutwqb'     # total precip
@@ -33,7 +33,8 @@ if __name__ == '__main__':
   # model_id = '1jh2qvrx'     # multiformer, velocity
   # model_id = 'wqqy94oa'     # multiformer, vorticity
   # model_id = '3cizyl1q'     # 3 field config: u,v,T
-
+  model_id = '1m79039j'     #6h pretrained field
+#  model_id = 'iazfz957'   #12h load, 6h predict 
   # supported modes: test, forecast, fixed_location, temporal_interpolation, global_forecast,
   #                  global_forecast_range
   # options can be used to over-write parameters in config; some modes also have specific options, 
@@ -46,10 +47,14 @@ if __name__ == '__main__':
   # mode, options = 'forecast', {'forecast_num_tokens' : 1} #, 'fields[0][2]' : [123, 137], 'attention' : False }
   
   # BERT forecast with patching to obtain global forecast
-  mode, options = 'global_forecast', { 'fields[0][2]' : [123, 137],
-                                       'dates' : [[2021, 2, 10, 12]],
+  mode, options = 'global_forecast', { #'fields[0][2]' : [137],
+                                       'dates' : [[2021, 2, 9, 24-6], [2021, 2, 10, 12-6], [2021, 2, 10, 24-6], [2021, 2, 11, 12-6], [2021, 2, 11, 24-6], [2021, 2, 12, 12-6], [2021, 2, 12, 24-6]],
                                        'token_overlap' : [0, 0],
-                                       'forecast_num_tokens' : 1,
+                                       'forecast_num_tokens' : 2,
                                        'attention' : False }
-
-  Evaluator.evaluate( mode, model_id, options)
+#  for i in range(6):
+#    options[f'fields[{i}][2]'] = [137] if i != 5 else [0]
+#    options[f'fields[{i}][3][0]'] = 4
+    
+  Evaluator.evaluate( mode, model_id, options, model_epoch = 49) 
+#  Evaluator.evaluate( mode, model_id, options, model_epoch = 3)

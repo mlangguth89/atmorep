@@ -20,7 +20,7 @@ import zarr
 import code
 import datetime
 import atmorep.config.config as config
-
+import pdb
 ####################################################################################################
 def write_forecast( model_id, epoch, batch_idx, levels, sources, sources_coords,
                                                 targets, targets_coords,
@@ -33,23 +33,23 @@ def write_forecast( model_id, epoch, batch_idx, levels, sources, sources_coords,
   '''
 
   fname =  f'{config.path_results}/id{model_id}/results_id{model_id}_epoch{epoch:05d}' + '_{}.zarr'
-
+  print("inside zarr store")
   zarr_store = getattr( zarr, zarr_store_type)
 
-  store_source = zarr_store( fname.format( 'source'))
-  exp_source = zarr.group(store=store_source)
-  for fidx, field in enumerate(sources) :
-    ds_field = exp_source.require_group( f'{field[0]}')
-    batch_size = field[1].shape[0]
-    for bidx in range( field[1].shape[0]) :
-      sample = batch_idx * batch_size + bidx
-      ds_batch_item = ds_field.create_group( f'sample={sample:05d}' )
-      ds_batch_item.create_dataset( 'data', data=field[1][bidx])
-      ds_batch_item.create_dataset( 'ml', data=levels)
-      ds_batch_item.create_dataset( 'datetime', data=sources_coords[0][bidx])
-      ds_batch_item.create_dataset( 'lat', data=sources_coords[1][bidx])
-      ds_batch_item.create_dataset( 'lon', data=sources_coords[2][bidx])
-  store_source.close()
+#  store_source = zarr_store( fname.format( 'source'))
+#  exp_source = zarr.group(store=store_source)
+#  for fidx, field in enumerate(sources) :
+#    ds_field = exp_source.require_group( f'{field[0]}')
+#    batch_size = field[1].shape[0]
+#    for bidx in range( field[1].shape[0]) :
+#      sample = batch_idx * batch_size + bidx
+#      ds_batch_item = ds_field.create_group( f'sample={sample:05d}' )
+#      ds_batch_item.create_dataset( 'data', data=field[1][bidx])
+#      ds_batch_item.create_dataset( 'ml', data=levels)
+#      ds_batch_item.create_dataset( 'datetime', data=sources_coords[0][bidx])
+#      ds_batch_item.create_dataset( 'lat', data=sources_coords[1][bidx])
+#      ds_batch_item.create_dataset( 'lon', data=sources_coords[2][bidx])
+#  store_source.close()
 
   store_target = zarr_store( fname.format( 'target'))
   exp_target = zarr.group(store=store_target)
@@ -81,20 +81,20 @@ def write_forecast( model_id, epoch, batch_idx, levels, sources, sources_coords,
       ds_batch_item.create_dataset( 'lon', data=targets_coords[2][bidx])
   store_pred.close()
 
-  store_ens = zarr_store( fname.format( 'ens'))
-  exp_ens = zarr.group(store=store_ens)
-  for fidx, field in enumerate(ensembles) :
-    ds_field = exp_ens.require_group( f'{field[0]}')
-    batch_size = field[1].shape[0]
-    for bidx in range( field[1].shape[0]) :
-      sample = batch_idx * batch_size + bidx
-      ds_batch_item = ds_field.create_group( f'sample={sample:05d}' )
-      ds_batch_item.create_dataset( 'data', data=field[1][bidx])
-      ds_batch_item.create_dataset( 'ml', data=levels)
-      ds_batch_item.create_dataset( 'datetime', data=targets_coords[0][bidx])
-      ds_batch_item.create_dataset( 'lat', data=targets_coords[1][bidx])
-      ds_batch_item.create_dataset( 'lon', data=targets_coords[2][bidx])
-  store_ens.close()
+#  store_ens = zarr_store( fname.format( 'ens'))
+#  exp_ens = zarr.group(store=store_ens)
+#  for fidx, field in enumerate(ensembles) :
+#    ds_field = exp_ens.require_group( f'{field[0]}')
+#    batch_size = field[1].shape[0]
+#    for bidx in range( field[1].shape[0]) :
+#      sample = batch_idx * batch_size + bidx
+#      ds_batch_item = ds_field.create_group( f'sample={sample:05d}' )
+#      ds_batch_item.create_dataset( 'data', data=field[1][bidx])
+#      ds_batch_item.create_dataset( 'ml', data=levels)
+#      ds_batch_item.create_dataset( 'datetime', data=targets_coords[0][bidx])
+#      ds_batch_item.create_dataset( 'lat', data=targets_coords[1][bidx])
+#      ds_batch_item.create_dataset( 'lon', data=targets_coords[2][bidx])
+#  store_ens.close()
 
 ####################################################################################################
 def write_BERT( model_id, epoch, batch_idx, levels, sources, sources_coords,

@@ -43,7 +43,7 @@ def netcdf_file_loader(fname, field, time_padding = [0,0,1], days_in_month = 0, 
 def grib_file_loader(fname, field, time_padding = [0,0,1], days_in_month = 0, static=False) :
   
   ds = xr.open_dataset(fname, engine='cfgrib',
-                              backend_kwargs={'time_dims':('valid_time','indexing_time')})[field]
+                              backend_kwargs={'time_dims':('valid_time','indexing_time'), "indexpath": ''})[field]
 
   # work-around for bug in download where for every month 31 days have been downloaded
   if days_in_month > 0 :

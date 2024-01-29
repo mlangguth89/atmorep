@@ -44,6 +44,8 @@ def train_continue( wandb_id, epoch, Trainer, epoch_continue = -1) :
   cf.par_size = par_size
   cf.optimizer_zero = False
   cf.attention = False
+  cf.partial_load = 24*20
+  
   # name has changed but ensure backward compatibility
   if hasattr( cf, 'loader_num_workers') :
     cf.num_loader_workers = cf.loader_num_workers
@@ -57,7 +59,7 @@ def train_continue( wandb_id, epoch, Trainer, epoch_continue = -1) :
 #  for i in range(len(cf.fields)) :
 #    cf.fields[i][3][0] = 4 #load 12 hours
 #  cf.forecast_num_tokens = 4 #predict 12 hours
-  
+
   setup_wandb( cf.with_wandb, cf, par_rank, project_name='train', mode='offline')  
   # resuming a run requires online mode, which is not available everywhere
   #setup_wandb( cf.with_wandb, cf, par_rank, wandb_id = wandb_id)  
@@ -224,6 +226,8 @@ def train() :
   cf.attention = False
 
   cf.rng_seed = None 
+
+  cf.partial_load = 24*20
 
   # usually use %>wandb offline to switch to disable syncing with server
   cf.with_wandb = True
