@@ -53,6 +53,8 @@ from atmorep.utils.utils import CRPS
 from atmorep.utils.utils import NetMode
 from atmorep.utils.utils import tokenize
 
+import atmorep.config.config as config
+
 ####################################################################################################
 class Trainer_Downscaling( Trainer_Base) :
 
@@ -281,8 +283,8 @@ class Trainer_Downscaling( Trainer_Base) :
 
     s2s = shape_to_str
 
-    fname_base = './results/id{}/test_id{}_rank{}_epoch{:0>5}_batch{:0>5}'
-    fname_base = fname_base.format( cf.wandb_id, cf.wandb_id, cf.hvd_rank, epoch, bidx) 
+    fname_base = '{}/id{}/test_id{}_rank{}_epoch{:0>5}_batch{:0>5}'
+    fname_base = fname_base.format(config.path_results, cf.wandb_id, cf.wandb_id, cf.hvd_rank, epoch, bidx) 
     fname_base += '_{}_{}_{}.dat'
   
     # save source: remains identical so just save ones
