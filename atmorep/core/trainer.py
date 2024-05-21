@@ -548,8 +548,11 @@ class Trainer_Base() :
     for pred, idx in zip( preds, self.fields_prediction_idx) :
 
       target = self.targets[idx]
+      
+      # ML: get mask to handle missing data
+      mask = ~np.isnan(target)
 
-      mse_loss = self.MSELoss( pred[0], target = target) 
+      mse_loss = self.MSELoss( pred[0][mask], target = target[mask]) 
       mse_loss_total += mse_loss.cpu().detach()
 
       # MSE loss
@@ -560,27 +563,27 @@ class Trainer_Base() :
       if 'mse_ensemble' in self.cf.losses :
         loss_en = torch.tensor( 0., device=target.device)
         for en in torch.transpose( pred[2], 1, 0) :
-          loss_en += self.MSELoss( en, target = target) 
+          loss_en += self.MSELoss( en[mask], target = target[mask]) 
         # losses['mse_ensemble'].append( 50. * loss_en / pred[2].shape[1])
         losses['mse_ensemble'].append( loss_en / pred[2].shape[1])
 
       # Generalized cross entroy loss for continuous distributions
       if 'stats' in self.cf.losses :
-        stats_loss = Gaussian( target, pred[0], pred[1])  
+        stats_loss = Gaussian( target[mask], pred[0][mask], pred[1][mask])  
         diff = (stats_loss-1.) 
         # stats_loss = 0.01 * torch.mean( diff * diff) + torch.mean( torch.sqrt(torch.abs( pred[1])) )
-        stats_loss = torch.mean( diff * diff) + torch.mean( torch.sqrt( torch.abs( pred[1])) )
+        stats_loss = torch.mean( diff * diff) + torch.mean( torch.sqrt( torch.abs( pred[1][mask])) )
         losses['stats'].append( stats_loss) 
       
       # Generalized cross entroy loss for continuous distributions
       if 'stats_area' in self.cf.losses :
-        diff = torch.abs( torch.special.erf( (target - pred[0]) / (pred[1] * pred[1])) )
-        stats_area = 0.2 * torch.mean( diff * diff) + torch.mean( torch.sqrt(torch.abs( pred[1])) )
+        diff = torch.abs( torch.special.erf( (target[mask] - pred[0][mask]) / (pred[1][mask] * pred[1][mask])) )
+        stats_area = 0.2 * torch.mean( diff * diff) + torch.mean( torch.sqrt(torch.abs( pred[1][mask])) )
         losses['stats_area'].append( stats_area)
 
       # CRPS score
       if 'crps' in self.cf.losses :
-        crps_loss = torch.mean( CRPS( target, pred[0], pred[1]))
+        crps_loss = torch.mean( CRPS( target[mask], pred[0][mask], pred[1][mask]))
         losses['crps'].append( crps_loss)
 
     loss = torch.tensor( 0., device=self.device_out)
