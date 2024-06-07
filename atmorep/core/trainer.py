@@ -550,7 +550,7 @@ class Trainer_Base() :
       target = self.targets[idx]
       
       # ML: get mask to handle missing data
-      mask = ~np.isnan(target)
+      mask = ~torch.isnan(target)
 
       mse_loss = self.MSELoss( pred[0][mask], target = target[mask]) 
       mse_loss_total += mse_loss.cpu().detach()
