@@ -26,6 +26,7 @@ class NormalizerLocal() :
   def __init__(self, field_info, vlevel, file_shape, data_type = 'era5', level_type = 'ml') :
 
     fname_base =  '{}/{}/normalization/{}/normalization_mean_var_{}_y{}_m{:02d}_{}{}.bin'
+    self.data_type = data_type
     self.year_base = config.datasets[data_type]['extent'][0][0]
     self.year_last = config.datasets[data_type]['extent'][0][1]
     lat_min, lat_max = config.datasets[data_type]['extent'][1]
@@ -55,7 +56,14 @@ class NormalizerLocal() :
 
   def normalize( self, year, month, data, coords) :
 
-    corr_data_ym = self.corr_data[ (year - self.year_base) * 12 + (month-1) ]
+    try:
+      corr_data_ym = self.corr_data[ (year - self.year_base) * 12 + (month-1) ]
+    except IndexError as err:
+      print(year)
+      print(month)
+      print(self.year_base)
+      print(self.data_type)
+      raise err
     mean = corr_data_ym.sel( lat=coords[0], lon=coords[1], data='mean').values
     var = corr_data_ym.sel( lat=coords[0], lon=coords[1], data='var').values
     if (var == 0.).all() :
