@@ -352,3 +352,32 @@ def CRPS( y, mu, std_dev) :
   t2 = 2. * Gaussian( (y-mu) / std_dev)
   val = std_dev * ( (y-mu)/std_dev * t1 + t2 - c1 )
   return val
+
+####################################################################################################
+def coords_from_tokeninfo(token_info, data_config):
+  """
+  Retrieve latitude and longitude coordinates from token-info and data configuration.
+  :param token_info: token information
+  :param data_config: data configuration, e.g. cf.fields
+  :return lat, lon: list of latitude and longitude coordinates
+  """  
+  num_tokens = data_config[3]
+  token_size = data_config[4]
+  lat_d_h, lon_d_h = int(np.floor(token_size[1]/2.)), int(np.floor(token_size[2]/2.))
+  lats, lons = [ ], [ ]
+
+  for tinfo in token_info:
+    lat_min, lat_max = tinfo[0][4], tinfo[num_tokens[1]*num_tokens[2]-1][4]
+    lon_min, lon_max = tinfo[0][5], tinfo[num_tokens[1]*num_tokens[2]-1][5]
+    res = tinfo[0][-1]
+    lat = torch.arange( lat_min - lat_d_h*res, lat_max + lat_d_h*res + 0.001, res)
+    if lon_max < lon_min :
+      lon = torch.arange( lon_min - lon_d_h*res, 360. + lon_max + lon_d_h*res + 0.001, res)
+    else :
+      lon = torch.arange( lon_min - lon_d_h*res, lon_max + lon_d_h*res + 0.001, res) 
+    lats.append( lat.numpy())
+    lons.append( torch.remainder( lon, 360.).numpy())
+
+  return lats, lons
+
+
