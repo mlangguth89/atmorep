@@ -18,6 +18,7 @@ import os
 import torch
 import torchinfo
 import numpy as np
+import pandas as pd
 import code
 # code.interact(local=locals())
 
@@ -27,6 +28,7 @@ import datetime
 import time
 import math
 from typing import TypeVar
+import pickle
 
 import functools
 
@@ -51,12 +53,13 @@ from atmorep.utils.utils import init_torch
 from atmorep.utils.utils import Gaussian
 from atmorep.utils.utils import CRPS
 from atmorep.utils.utils import NetMode
-from atmorep.utils.utils import tokenize
+from atmorep.utils.utils import tokenize, coords_from_tokeninfo
 
 import atmorep.config.config as config
+from atmorep.datasets.data_writer import write_forecast, write_BERT, write_attention
 
 ####################################################################################################
-class Trainer_Downscaling( Trainer_Base) :
+class Trainer_Downscaling(Trainer_Base) :
 
   ###################################################
   def __init__( self, cf_downscaling, devices) :
@@ -272,3 +275,271 @@ class Trainer_Downscaling( Trainer_Base) :
     pred += pe
 
     return pred
+
+  ###################################################
+  def log_validate( self, epoch, bidx, log_sources, log_preds) :
+    '''Hook for logging: output associated with concrete training strategy.'''
+
+    if not hasattr( self.cf, 'wandb_id') :
+      return
+
+    if 'identity' == self.cf.BERT_strategy :
+      self.log_validate_identity( epoch, bidx, log_sources, log_preds)
+    else:
+      raise ValueError(f"BERT-strategy {self.cf.BERT_strateg} is not supported for downscaling. Ensure that 'identity' is used.")
+  
+  ###################################################
+  def log_validate_identity( self, epoch, batch_idx, log_sources, log_preds) :
+    '''Logging for BERT_strategy=identity.'''
+
+    cf = self.cf
+    detok = utils.detokenize
+
+    # save source: remains identical so just save ones
+    (sources, token_infos, targets, _, _) = log_sources
+
+    # write to pickle
+    model_id = cf.wandb_id
+    ## sources
+    fname =  f'{config.path_results}/id{model_id}/sources.pkl'
+    with open(fname, 'wb') as f:
+        pickle.dump(sources, f)
+    
+    ## token_infos
+    fname =  f'{config.path_results}/id{model_id}/token_infos.pkl'
+    with open(fname, 'wb') as f:
+        pickle.dump(token_infos, f)
+
+    ## targets
+    fname =  f'{config.path_results}/id{model_id}/targets.pkl'
+    with open(fname, 'wb') as f:
+        pickle.dump(targets, f)
+
+    sources_out, targets_out, preds_out, ensembles_out = [ ], [ ], [ ], [ ] 
+
+    # reconstruct geo-coords (differ for source and target)
+    # TBD ML: Check meaning of forecast_num_tokens
+    forecast_num_tokens = 1
+    if hasattr( cf, 'forecast_num_tokens') :
+      forecast_num_tokens = cf.forecast_num_tokens
+   
+    # get number of tokens along time-dimension and ensure that it is consistent
+    ntokens_time = cf.fields[0][3][0]
+    assert ntokens_time == cf.fields_targets[0][3][0], f"Tokens along time-dimension must be the same for source and target."
+
+    lats_src, lons_src = coords_from_tokeninfo(token_infos[0], cf.fields[0])
+    lats_tar, lons_tar = coords_from_tokeninfo(token_infos[0], cf.fields_targets[0])
+
+    # check that last token (bottom right corner) has the expected coords
+    # assert np.allclose( )
+
+    # extract dates for each token entry, constant for each batch and field
+    dates_t = []
+    for b_token_infos in token_infos[0] :
+      dates_t.append(utils.token_info_to_time(b_token_infos[0])-pd.Timedelta(hours=ntokens_time-1))
+
+    # TODO: check that last token matches first one
+
+    # process input fields
+    for fidx, field_info in enumerate(cf.fields) : 
+      # reshape from tokens to contiguous physical field
+      num_levels = len(field_info[2])
+      source = detok( sources[fidx].cpu().detach().numpy())
+      # TODO: check that geo-coords match to general ones that have been pre-determined
+      for bidx in range(token_infos[fidx].shape[0]) :
+        for vidx, _ in enumerate(field_info[2]) :
+          denormalize = self.model.normalizer( fidx, vidx).denormalize
+          date, coords = dates_t[bidx], [lats_src[bidx], lons_src[bidx]]
+          source[bidx,vidx] = denormalize( date.year, date.month, source[bidx,vidx], coords)
+      # append
+      sources_out.append( [field_info[0], source])
+
+    # process predicted fields
+    for fidx, fn in enumerate(cf.fields_prediction) :
+      #
+      field_info = cf.fields[ self.fields_prediction_idx[fidx] ]
+      num_levels = len(field_info[2])
+      # targets
+      target = detok( targets[fidx].cpu().detach().numpy().reshape( [ -1, num_levels, 
+                                        forecast_num_tokens, *field_info[3][1:], *field_info[4] ]))
+      # predictions
+      pred = log_preds[fidx][0].cpu().detach().numpy()
+      pred = detok( pred.reshape( [ -1, num_levels, 
+                                    forecast_num_tokens, *field_info[3][1:], *field_info[4] ]))
+      # ensemble
+      ensemble = log_preds[fidx][2].cpu().detach().numpy()
+      ensemble = detok( ensemble.reshape( [ -1, cf.net_tail_num_nets, num_levels, 
+                                      forecast_num_tokens, *field_info[3][1:], *field_info[4] ]) )
+      # denormalize
+      for bidx in range(token_infos[fidx].shape[0]) :
+        for vidx, vl in enumerate(field_info[2]) :
+          denormalize = self.model.normalizer( self.fields_prediction_idx[fidx], vidx).denormalize
+          date, coords = dates_t[bidx], [lats_tar[bidx], lons_tar[bidx]]
+          target[bidx,vidx] = denormalize( date.year, date.month, target[bidx,vidx], coords)
+          pred[bidx,vidx] = denormalize( date.year, date.month, pred[bidx,vidx], coords)
+          ensemble[bidx,:,vidx] = denormalize(date.year, date.month, ensemble[bidx,:,vidx], coords) 
+      # append
+      targets_out.append( [fn[0], target])
+      preds_out.append( [fn[0], pred])
+      ensembles_out.append( [fn[0], ensemble])
+
+    # generate time range
+    dates_sources, dates_targets = [ ], [ ]
+    for bidx in range( source.shape[0]) :
+      r = pd.date_range( start=dates_t[bidx], periods=source.shape[2], freq='h')
+      dates_sources.append( r.to_pydatetime().astype( 'datetime64[s]') )
+      dates_targets.append( dates_sources[-1][ -forecast_num_tokens*ntokens_time : ] )
+
+    levels = np.array(cf.fields[0][2])
+    lats_src = [90.-lat for lat in lats_src]
+    lats_tar = [90.-lat for lat in lats_tar]
+
+    write_forecast( cf.wandb_id, epoch, batch_idx,
+                                 levels, sources_out, [dates_sources, lats_src, lons_src],
+                                 targets_out, [dates_targets, lats_tar, lons_tar],
+                                 preds_out, ensembles_out )
+
+  ###################################################
+  def log_validate_BERT( self, epoch, batch_idx, log_sources, log_preds) :
+    '''Logging for BERT_strategy=BERT.'''
+
+    cf = self.cf
+    detok = utils.detokenize
+
+    # save source: remains identical so just save ones
+    (sources, token_infos, targets, tokens_masked_idx, tokens_masked_idx_list) = log_sources
+
+    sources_out, targets_out, preds_out, ensembles_out = [ ], [ ], [ ], [ ]
+    sources_dates_out, sources_lats_out, sources_lons_out = [ ], [ ], [ ]
+    targets_dates_out, targets_lats_out, targets_lons_out = [ ], [ ], [ ]
+
+    for fidx, field_info in enumerate(cf.fields) : 
+
+      # reconstruct coordinates
+      is_predicted = fidx in self.fields_prediction_idx
+      num_levels = len(field_info[2])
+      num_tokens = field_info[3]
+      token_size = field_info[4]
+      lat_d_h, lon_d_h = int(np.floor(token_size[1]/2.)), int(np.floor(token_size[2]/2.))
+      tinfos = token_infos[fidx].reshape( [-1, num_levels, *num_tokens, cf.size_token_info])
+      res = tinfos[0,0,0,0,0][-1].item()
+      batch_size = tinfos.shape[0]
+
+      sources_b = detok( sources[fidx].numpy())
+
+      if is_predicted :
+        # split according to levels
+        lens_levels = [t.shape[0] for t in tokens_masked_idx[fidx]]
+        targets_b = torch.split( targets[fidx], lens_levels)
+        preds_mu_b = torch.split( log_preds[fidx][0], lens_levels)
+        preds_ens_b = torch.split( log_preds[fidx][2], lens_levels)
+        # split according to batch
+        lens_batches = [ [bv.shape[0] for bv in b] for b in tokens_masked_idx_list[fidx] ]
+        targets_b = [torch.split( targets_b[vidx], lens) for vidx,lens in enumerate(lens_batches)]
+        preds_mu_b = [torch.split(preds_mu_b[vidx], lens) for vidx,lens in enumerate(lens_batches)]
+        preds_ens_b =[torch.split(preds_ens_b[vidx],lens) for vidx,lens in enumerate(lens_batches)]
+        # recover token shape
+        targets_b = [[targets_b[vidx][bidx].reshape([-1, *token_size]) 
+                                                                    for bidx in range(batch_size)]
+                                                                    for vidx in range(num_levels)]
+        preds_mu_b = [[preds_mu_b[vidx][bidx].reshape([-1, *token_size]) 
+                                                                    for bidx in range(batch_size)]
+                                                                    for vidx in range(num_levels)]
+        preds_ens_b = [[preds_ens_b[vidx][bidx].reshape( [-1, cf.net_tail_num_nets, *token_size])
+                                                                     for bidx in range(batch_size)]
+                                                                     for vidx in range(num_levels)]
+
+      # for all batch items
+      coords_b = []
+      for bidx, tinfo in enumerate(tinfos) :
+
+        # use first vertical levels since a column is considered
+        lats = np.arange(tinfo[0,0,0,0,4]-lat_d_h*res, tinfo[0,0,-1,0,4]+lat_d_h*res+0.001,res)
+        if tinfo[0,0,0,-1,5] < tinfo[0,0,0,0,5] :
+          lons = np.remainder( np.arange( tinfo[0,0,0,0,5] - lon_d_h*res, 
+                                        360. + tinfo[0,0,0,-1,5] + lon_d_h*res + 0.001, res), 360.)
+        else :
+          lons = np.arange(tinfo[0,0,0,0,5]-lon_d_h*res, tinfo[0,0,0,-1,5]+lon_d_h*res+0.001,res)
+        lons = np.remainder( lons, 360.)
+
+        # time stamp in token_infos is at start time so needs to be advanced by token_size[0]-1
+        s = utils.token_info_to_time( tinfo[0,0,0,0,:3] ) - pd.Timedelta(hours=token_size[0]-1)
+        e = utils.token_info_to_time( tinfo[0,-1,0,0,:3] )
+        dates = pd.date_range( start=s, end=e, freq='h')
+
+        # target etc are aliasing targets_b which simplifies bookkeeping below
+        if is_predicted :
+          target = [targets_b[vidx][bidx] for vidx in range(num_levels)]
+          pred_mu = [preds_mu_b[vidx][bidx] for vidx in range(num_levels)]
+          pred_ens = [preds_ens_b[vidx][bidx] for vidx in range(num_levels)]
+
+        dates_masked_l, lats_masked_l, lons_masked_l = [], [], []
+        for vidx, _ in enumerate(field_info[2]) :
+
+          normalizer = self.model.normalizer( fidx, vidx)
+          y, m = dates[0].year, dates[0].month
+          sources_b[bidx,vidx] = normalizer.denormalize( y, m, sources_b[bidx,vidx], [lats, lons])
+
+          if is_predicted :
+
+            # TODO: make sure normalizer_local / normalizer_global is used in data_loader
+            idx = tokens_masked_idx_list[fidx][vidx][bidx]
+            tinfo_masked = tinfos[bidx,vidx].flatten( 0,2)
+            tinfo_masked = tinfo_masked[idx]
+            lad, lod = lat_d_h*res, lon_d_h*res
+            lats_masked, lons_masked, dates_masked = [], [], []
+            for t in tinfo_masked :
+
+              lats_masked.append( np.expand_dims( np.arange(t[4]-lad, t[4]+lad+0.001,res), 0))
+              lons_masked.append( np.expand_dims( np.arange(t[5]-lod, t[5]+lod+0.001,res), 0))
+
+              r = pd.date_range( start=utils.token_info_to_time(t), periods=token_size[0], freq='h')
+              dates_masked.append( np.expand_dims(r.to_pydatetime().astype( 'datetime64[s]'), 0) )
+
+            lats_masked = np.concatenate( lats_masked, 0)
+            lons_masked = np.remainder( np.concatenate( lons_masked, 0), 360.)
+            dates_masked = np.concatenate( dates_masked, 0)
+
+            for ii,(t,p,e,la,lo) in enumerate(zip( target[vidx], pred_mu[vidx], pred_ens[vidx],
+                                                    lats_masked, lons_masked)) :
+              targets_b[vidx][bidx][ii] = normalizer.denormalize( y, m, t, [la, lo])
+              preds_mu_b[vidx][bidx][ii]  = normalizer.denormalize( y, m, p, [la, lo])
+              preds_ens_b[vidx][bidx][ii] = normalizer.denormalize( y, m, e, [la, lo])
+
+            dates_masked_l += [ dates_masked ]
+            lats_masked_l += [ [90.-lat for lat in lats_masked] ]
+            lons_masked_l += [ lons_masked ]
+
+        dates = dates.to_pydatetime().astype( 'datetime64[s]')
+
+        coords_b += [ [dates, 90.-lats, lons, dates_masked_l, lats_masked_l, lons_masked_l] ]
+
+      fn = field_info[0]
+      sources_out.append( [fn, sources_b])
+      if is_predicted :
+        targets_out.append([fn, [[t.numpy(force=True) for t in t_v] for t_v in targets_b]])
+        preds_out.append( [fn, [[p.numpy(force=True) for p in p_v] for p_v in preds_mu_b]])
+        ensembles_out.append( [fn, [[p.numpy(force=True) for p in p_v] for p_v in preds_ens_b]])
+      else :
+        targets_out.append( [fn, []])
+        preds_out.append( [fn, []])
+        ensembles_out.append( [fn, []])
+
+      sources_dates_out.append( [c[0] for c in coords_b])
+      sources_lats_out.append( [c[1] for c in coords_b])
+      sources_lons_out.append( [c[2] for c in coords_b])
+      if is_predicted :
+        targets_dates_out.append( [c[3] for c in coords_b])
+        targets_lats_out.append( [c[4] for c in coords_b])
+        targets_lons_out.append( [c[5] for c in coords_b])
+      else :
+        targets_dates_out.append( [ ])
+        targets_lats_out.append( [ ])
+        targets_lons_out.append( [ ])
+
+    levels = [[np.array(l) for l in field[2]] for field in cf.fields]
+    write_BERT( cf.wandb_id, epoch, batch_idx,
+                             levels, sources_out,
+                             [sources_dates_out, sources_lats_out, sources_lons_out],
+                             targets_out, [targets_dates_out, targets_lats_out, targets_lons_out],
+                             preds_out, ensembles_out )
