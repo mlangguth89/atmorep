@@ -298,22 +298,22 @@ class Trainer_Downscaling(Trainer_Base) :
     # save source: remains identical so just save ones
     (sources, token_infos, targets, _, _) = log_sources
 
-    # write to pickle
-    model_id = cf.wandb_id
-    ## sources
-    fname =  f'{config.path_results}/id{model_id}/sources.pkl'
-    with open(fname, 'wb') as f:
-        pickle.dump(sources, f)
+    # # write to pickle
+    # model_id = cf.wandb_id
+    # ## sources
+    # fname =  f'{config.path_results}/id{model_id}/sources.pkl'
+    # with open(fname, 'wb') as f:
+    #     pickle.dump(sources, f)
     
-    ## token_infos
-    fname =  f'{config.path_results}/id{model_id}/token_infos.pkl'
-    with open(fname, 'wb') as f:
-        pickle.dump(token_infos, f)
+    # ## token_infos
+    # fname =  f'{config.path_results}/id{model_id}/token_infos.pkl'
+    # with open(fname, 'wb') as f:
+    #     pickle.dump(token_infos, f)
 
-    ## targets
-    fname =  f'{config.path_results}/id{model_id}/targets.pkl'
-    with open(fname, 'wb') as f:
-        pickle.dump(targets, f)
+    # ## targets
+    # fname =  f'{config.path_results}/id{model_id}/targets.pkl'
+    # with open(fname, 'wb') as f:
+    #     pickle.dump(targets, f)
 
     sources_out, targets_out, preds_out, ensembles_out = [ ], [ ], [ ], [ ] 
 
@@ -344,7 +344,7 @@ class Trainer_Downscaling(Trainer_Base) :
     # process input fields
     for fidx, field_info in enumerate(cf.fields) : 
       # reshape from tokens to contiguous physical field
-      num_levels = len(field_info[2])
+      #num_levels = len(field_info[2])
       source = detok( sources[fidx].cpu().detach().numpy())
       # TODO: check that geo-coords match to general ones that have been pre-determined
       for bidx in range(token_infos[fidx].shape[0]) :
@@ -359,7 +359,7 @@ class Trainer_Downscaling(Trainer_Base) :
     # process predicted fields
     for fidx, field_info in enumerate(cf.fields_targets) :
       #
-      num_levels = len(field_info[2])
+      #num_levels = len(field_info[2])
       # targets
       target = detok( targets[fidx].cpu().detach().numpy())
       # predictions
