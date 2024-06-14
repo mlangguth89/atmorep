@@ -291,7 +291,7 @@ def train() :
 ####################################################################################################
 if __name__ == '__main__':
 
-  train()
+  # train()
 
   # # Continue training or evaluate pre-trained model (the first two lines have to be set)
   # model_id = '333wsx3p'
@@ -325,7 +325,12 @@ if __name__ == '__main__':
   # model_epoch = 4
   # model_id = '2803m4e8'
   # model_epoch = 10
-  # Trainer = Trainer_Downscaling
+
+  Trainer = Trainer_Downscaling
   # # train_continue( model_id, model_epoch, Trainer)
-  # evaluate( model_id, model_epoch, Trainer)
+
+# ML: to be added  
+  model_id = "xxxx"    
+  model_epoch = None
+  evaluate( model_id, model_epoch, Trainer)
 
