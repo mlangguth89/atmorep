@@ -340,6 +340,7 @@ class Trainer_Downscaling(Trainer_Base) :
 
     # TODO: check that last token matches first one
 
+    itar = 0
     # process input fields
     for fidx, field_info in enumerate(cf.fields) : 
       # reshape from tokens to contiguous physical field
@@ -353,42 +354,38 @@ class Trainer_Downscaling(Trainer_Base) :
           source[bidx,vidx] = denormalize( date.year, date.month, source[bidx,vidx], coords)
       # append
       sources_out.append( [field_info[0], source])
+      itar += 1
 
     # process predicted fields
-    for fidx, fn in enumerate(cf.fields_prediction) :
+    for fidx, field_info in enumerate(cf.fields_targets) :
       #
-      field_info = cf.fields[ self.fields_prediction_idx[fidx] ]
       num_levels = len(field_info[2])
       # targets
-      target = detok( targets[fidx].cpu().detach().numpy().reshape( [ -1, num_levels, 
-                                        forecast_num_tokens, *field_info[3][1:], *field_info[4] ]))
+      target = detok( targets[fidx].cpu().detach().numpy())
       # predictions
-      pred = log_preds[fidx][0].cpu().detach().numpy()
-      pred = detok( pred.reshape( [ -1, num_levels, 
-                                    forecast_num_tokens, *field_info[3][1:], *field_info[4] ]))
+      pred = detok(log_preds[fidx][0].cpu().detach().numpy())
       # ensemble
-      ensemble = log_preds[fidx][2].cpu().detach().numpy()
-      ensemble = detok( ensemble.reshape( [ -1, cf.net_tail_num_nets, num_levels, 
-                                      forecast_num_tokens, *field_info[3][1:], *field_info[4] ]) )
+      ensemble = detok(log_preds[fidx][2].cpu().detach().numpy())
+
       # denormalize
       for bidx in range(token_infos[fidx].shape[0]) :
         for vidx, vl in enumerate(field_info[2]) :
-          denormalize = self.model.normalizer( self.fields_prediction_idx[fidx], vidx).denormalize
+          denormalize = self.model.normalizer( itar + 1, vidx).denormalize
           date, coords = dates_t[bidx], [lats_tar[bidx], lons_tar[bidx]]
           target[bidx,vidx] = denormalize( date.year, date.month, target[bidx,vidx], coords)
           pred[bidx,vidx] = denormalize( date.year, date.month, pred[bidx,vidx], coords)
           ensemble[bidx,:,vidx] = denormalize(date.year, date.month, ensemble[bidx,:,vidx], coords) 
       # append
-      targets_out.append( [fn[0], target])
-      preds_out.append( [fn[0], pred])
-      ensembles_out.append( [fn[0], ensemble])
+      targets_out.append( [field_info[0], target])
+      preds_out.append( [field_info[0], pred])
+      ensembles_out.append( [field_info[0], ensemble])
 
     # generate time range
     dates_sources, dates_targets = [ ], [ ]
     for bidx in range( source.shape[0]) :
       r = pd.date_range( start=dates_t[bidx], periods=source.shape[2], freq='h')
       dates_sources.append( r.to_pydatetime().astype( 'datetime64[s]') )
-      dates_targets.append( dates_sources[-1][ -forecast_num_tokens*ntokens_time : ] )
+      dates_targets.append( dates_sources[-1][:] )
 
     levels = np.array(cf.fields[0][2])
     lats_src = [90.-lat for lat in lats_src]
